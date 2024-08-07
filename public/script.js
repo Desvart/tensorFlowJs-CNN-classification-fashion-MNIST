@@ -1,4 +1,6 @@
-import {TRAINING_DATA} from 'https://storage.googleapis.com/jmstore/TensorFlowJS/EdX/TrainingData/mnist.js';
+import {TRAINING_DATA} from 'https://storage.googleapis.com/jmstore/TensorFlowJS/EdX/TrainingData/fashion-mnist.js';
+
+const FASHION_MNIST_CLASSES = ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat', 'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot'];
 
 // Grab a reference to the MNIST input values (pixel data).
 const INPUTS = TRAINING_DATA.inputs;
@@ -17,8 +19,9 @@ const OUTPUTS_TENSOR = tf.oneHot(tf.tensor1d(OUTPUTS, 'int32'), 10);
 
 // Now actually create and define model architecture.
 const model = tf.sequential();
-model.add(tf.layers.dense({inputShape: [784], units: 32, activation: 'relu'}));
-model.add(tf.layers.dense({units: 16, activation: 'relu'}));
+model.add(tf.layers.dense({inputShape: [784], units: 100, activation: 'relu'}));
+model.add(tf.layers.dense({units: 20, activation: 'relu'}));
+model.add(tf.layers.dense({units: 50, activation: 'relu'}));
 model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
 
 model.summary();
@@ -38,17 +41,20 @@ async function train() {
         shuffle: true,        // Ensure data is shuffled again before using each epoch.
         validationSplit: 0.2,
         batchSize: 512,       // Update weights after every 512 examples.
-        epochs: 50,           // Go over the data 50 times!
+        epochs: 200,           // Go over the data 50 times!
         callbacks: {onEpochEnd: logProgress}
     });
 
     OUTPUTS_TENSOR.dispose();
     INPUTS_TENSOR.dispose();
+
+    console.log("Average error loss: " + Math.sqrt(results.history.loss[results.history.loss.length - 1]));
+
     evaluate(); // Once trained we can evaluate the model.
 }
 
 function logProgress(epoch, logs) {
-    console.log(`Epoch: ${epoch} - loss: ${Math.sqrt(logs.loss)}`);
+    console.log(`Epoch: ${epoch} - loss: ${Math.sqrt(logs.loss)} - accuracy: ${logs.acc}`);
 }
 
 const PREDICTION_ELEMENT = document.getElementById('prediction');
@@ -64,7 +70,7 @@ function evaluate() {
     });
 
     answer.array().then(function(index) {
-        PREDICTION_ELEMENT.innerText = index;
+        PREDICTION_ELEMENT.innerText = FASHION_MNIST_CLASSES[index];
         PREDICTION_ELEMENT.setAttribute('class', (index === OUTPUTS[OFFSET]) ? 'correct' : 'wrong');
         answer.dispose();
         drawImage(INPUTS[OFFSET]);
