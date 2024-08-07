@@ -1,7 +1,6 @@
 body {
-  font-family: helvetica, arial, sans-serif;
+  font-family: arial, sans-serif;
   margin: 2em;
-  color: #3D3D3D;
 }
 
 h1 {
@@ -9,44 +8,42 @@ h1 {
   color: #FF6F00;
 }
 
-video {
+canvas {
   display: block;
+  width: 28px;
+  height: 28px;
+  margin: 10px auto 5px auto;
+  zoom: 6;
 }
 
-section {
-  opacity: 1;
-  transition: opacity 500ms ease-in-out;
-}
-
-.removed {
-  display: none;
-}
-
-.invisible {
-  opacity: 0.2;
-}
-
-.camView {
-  position: relative;
-  float: left;
-  width: calc(100% - 20px);
+p#prediction {
+  font-size: 20pt;
   margin: 10px;
-  cursor: pointer;
+  text-align: center;
 }
 
-.camView p {
-  position: absolute;
-  padding: 5px;
-  background-color: rgba(255, 111, 0, 0.85);
-  color: #FFF;
-  border: 1px dashed rgba(255, 255, 255, 0.7);
-  z-index: 2;
-  font-size: 12px;
+p#prediction.correct {
+  border: 3px solid #00ff00;
+  color: #00ff00;
+  font-size: 100pt;
 }
 
-.highlighter {
-  background: rgba(0, 255, 0, 0.25);
-  border: 1px dashed #fff;
-  z-index: 1;
-  position: absolute;
+p#prediction.wrong {
+  border: 3px solid #ff0000;
+  color: #ff0000;
+  font-size: 100pt;
+}
+
+p {
+  margin: 5px;
+}
+
+.box {
+  width: 45%;
+  margin: 1%;
+  border: 1px dashed #cdcdcd;
+  display: inline-block;
+  min-height: 400px;
+  text-align: center;
+  float: left;
 }

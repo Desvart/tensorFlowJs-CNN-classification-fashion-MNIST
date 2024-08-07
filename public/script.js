@@ -1,100 +1,100 @@
-const INPUTS = [];
-for (let n = 1; n <=20; n++) {
-    INPUTS.push(n);
-}
+import {TRAINING_DATA} from 'https://storage.googleapis.com/jmstore/TensorFlowJS/EdX/TrainingData/mnist.js';
 
-const OUTPUTS = [];
-for (let n = 0; n < INPUTS.length; n++) {
-    OUTPUTS.push(INPUTS[n] * INPUTS[n]);
-}
+// Grab a reference to the MNIST input values (pixel data).
+const INPUTS = TRAINING_DATA.inputs;
 
+// Grab reference to the MNIST output values.
+const OUTPUTS = TRAINING_DATA.outputs;
+
+// Shuffle the two arrays in the same way so inputs still match outputs indexes.
 tf.util.shuffleCombo(INPUTS, OUTPUTS);
 
-const INPUTS_TENSOR = tf.tensor1d(INPUTS);
-const OUTPUTS_TENSOR = tf.tensor1d(OUTPUTS);
+// Input feature Array is 1 dimensional.
+const INPUTS_TENSOR = tf.tensor2d(INPUTS);
 
-function normalize(tensor, min, max) {
-    const result = tf.tidy(function() {
-        const MIN_VALUES = min || tf.min(tensor, 0);
-        const MAX_VALUES = max || tf.max(tensor, 0);
+// Output feature Array is 1 dimensional.
+const OUTPUTS_TENSOR = tf.oneHot(tf.tensor1d(OUTPUTS, 'int32'), 10);
 
-        const TENSOR_SUBTRACT_MIN_VALUE = tf.sub(tensor, MIN_VALUES);
-        const RANGE_SIZE = tf.sub(MAX_VALUES, MIN_VALUES);
-        const NORMALIZED_VALUES = tf.div(TENSOR_SUBTRACT_MIN_VALUE, RANGE_SIZE);
-
-        return {NORMALIZED_VALUES, MIN_VALUES, MAX_VALUES};
-    });
-    return result;
-}
-
-const FEATURE_RESULTS = normalize(INPUTS_TENSOR);
-console.log('Normalized values:');
-FEATURE_RESULTS.NORMALIZED_VALUES.print();
-
-console.log('Min values:');
-FEATURE_RESULTS.MIN_VALUES.print();
-
-console.log('Max values:');
-FEATURE_RESULTS.MAX_VALUES.print();
-
-INPUTS_TENSOR.dispose();
-
-const model = tf. sequential();
-model.add(tf.layers.dense({inputShape: [1], units: 25, activation: 'relu'}));
-model.add(tf.layers.dense({units: 5, activation: 'relu'}));
-model.add(tf.layers.dense({units: 1}));
+// Now actually create and define model architecture.
+const model = tf.sequential();
+model.add(tf.layers.dense({inputShape: [784], units: 32, activation: 'relu'}));
+model.add(tf.layers.dense({units: 16, activation: 'relu'}));
+model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
 
 model.summary();
 
-const LEARNING_RATE = 0.0001
-const OPTIMIZER = tf.train.sgd(LEARNING_RATE);
+await train();
 
 async function train() {
 
-
+    // Compile the model with the defined optimizer and specify our loss function to use.
     model.compile({
-       optimizer: OPTIMIZER,
-       loss: 'meanSquaredError'
+        optimizer: 'adam',
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy']
     });
 
-    function logProgress(epoch, logs) {
-        console.log(`Epoch: ${epoch} - loss: ${Math.sqrt(logs.loss)}`);
-        if (epoch === 70) {
-            OPTIMIZER.setLearningRate(LEARNING_RATE / 2);
-        }
-    }
-
-    let results = await model.fit(FEATURE_RESULTS.NORMALIZED_VALUES, OUTPUTS_TENSOR, {
-        //validationSplit: 0.15,
-        callbacks: { onEpochEnd: logProgress },
-        shuffle: true,
-        batchSize: 2,
-        epochs: 200
+    let results = await model.fit(INPUTS_TENSOR, OUTPUTS_TENSOR, {
+        shuffle: true,        // Ensure data is shuffled again before using each epoch.
+        validationSplit: 0.2,
+        batchSize: 512,       // Update weights after every 512 examples.
+        epochs: 50,           // Go over the data 50 times!
+        callbacks: {onEpochEnd: logProgress}
     });
 
     OUTPUTS_TENSOR.dispose();
-    FEATURE_RESULTS.NORMALIZED_VALUES.dispose();
-
-    console.log(`Average error loss: ${Math.sqrt(results.history.loss[results.history.loss.length - 1])}`);
-    //console.log(`Average validation error loss: ${Math.sqrt(results.history.val_loss[results.history.val_loss.length - 1])}`);
-
-    function evaluate() {
-        tf.tidy(function() {
-            let newInput = normalize(tf.tensor1d([7]), FEATURE_RESULTS.MIN_VALUES, FEATURE_RESULTS.MAX_VALUES);
-
-            let output = model.predict(newInput.NORMALIZED_VALUES);
-            output.print();
-        });
-
-        FEATURE_RESULTS.MIN_VALUES.dispose();
-        FEATURE_RESULTS.MAX_VALUES.dispose();
-        model.dispose();
-
-        console.log(tf.memory().numTensors);
-    }
-
-    evaluate();
+    INPUTS_TENSOR.dispose();
+    evaluate(); // Once trained we can evaluate the model.
 }
 
+function logProgress(epoch, logs) {
+    console.log(`Epoch: ${epoch} - loss: ${Math.sqrt(logs.loss)}`);
+}
 
-await train();
+const PREDICTION_ELEMENT = document.getElementById('prediction');
+
+function evaluate() {
+    const OFFSET = Math.floor((Math.random() * INPUTS.length)); // Select random from all example inputs.
+
+    let answer = tf.tidy(function() {
+        let newInput = tf.tensor1d(INPUTS[OFFSET]).expandDims();
+        let output = model.predict(newInput);
+        output.print();
+        return output.squeeze().argMax();
+    });
+
+    answer.array().then(function(index) {
+        PREDICTION_ELEMENT.innerText = index;
+        PREDICTION_ELEMENT.setAttribute('class', (index === OUTPUTS[OFFSET]) ? 'correct' : 'wrong');
+        answer.dispose();
+        drawImage(INPUTS[OFFSET]);
+    });
+}
+
+const CANVAS = document.getElementById('canvas');
+const CTX = CANVAS.getContext('2d');
+
+function drawImage(digit) {
+    var imageData = CTX.getImageData(0, 0, 28, 28);
+
+    for (let i = 0; i < digit.length; i++) {
+        imageData.data[i * 4] = digit[i] * 255;      // Red Channel.
+        imageData.data[i * 4 + 1] = digit[i] * 255;  // Green Channel.
+        imageData.data[i * 4 + 2] = digit[i] * 255;  // Blue Channel.
+        imageData.data[i * 4 + 3] = 255;             // Alpha Channel.
+    }
+
+    // Render the updated array of data to the canvas itself.
+    CTX.putImageData(imageData, 0, 0);
+
+    // Perform a new classification after a certain interval.
+    setTimeout(evaluate, 2000);
+}
+
+function drawImage2(digit, interval) {
+    digit = tf.tensor(digit, [28, 28]);
+    tf.browser.toPixels(digit, CANVAS);
+
+    // Perform a new classification after a certain interval.
+    setTimeout(evaluate, interval);
+}
