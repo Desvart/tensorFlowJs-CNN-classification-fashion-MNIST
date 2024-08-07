@@ -8,13 +8,24 @@ import {TRAINING_DATA} from 'https://storage.googleapis.com/jmstore/TensorFlowJS
 // console.log(`Max value of historical MNIST data: ${tf.max(tf.tensor2d(TRAINING_DATA_0.inputs))}`);
 // debugger;
 
+
+// Define the initial speed of the animation.
+let interval = 2000;
+// Define the classes for the Fashion MNIST dataset.
+const FASHION_MNIST_CLASSES = ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat', 'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot'];
+
 // Get HTML elements.
 const PREDICTION_ELEMENT = document.getElementById('prediction');
 const CANVAS = document.getElementById('canvas');
 const CTX = CANVAS.getContext('2d');
+const RANGER = document.getElementById('ranger');
+const DOM_SPEED = document.getElementById('domSpeed');
 
-// Define the classes for the Fashion MNIST dataset.
-const FASHION_MNIST_CLASSES = ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat', 'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot'];
+// When user drags slider update interval.
+RANGER.addEventListener('input', function(e) {
+    interval = this.value;
+    DOM_SPEED.innerText = 'Change speed of classification! Currently: ' + interval + 'ms';
+});
 
 // Grab a reference to the MNIST input (pixel data) and output values.
 const INPUTS = TRAINING_DATA.inputs;
@@ -24,21 +35,38 @@ const OUTPUTS = TRAINING_DATA.outputs;
 tf.util.shuffleCombo(INPUTS, OUTPUTS);
 
 // Convert the inputs and outputs to tensors.
-const INPUTS_TENSOR = tf.tensor2d(INPUTS);
+const INPUTS_TENSOR = normalize(tf.tensor2d(INPUTS), 0, 255);
 const OUTPUTS_TENSOR = tf.oneHot(tf.tensor1d(OUTPUTS, 'int32'), 10);
-
-// Normalize the data set.
-const FEATURE_RESULTS = normalize(INPUTS_TENSOR);
-INPUTS_TENSOR.dispose();
-console.log(`Normalized data set min values: ${FEATURE_RESULTS.MIN_VALUES}`);
-console.log(`Normalized data set max values: ${FEATURE_RESULTS.MAX_VALUES}`);
 
 // Create the model architecture
 const model = tf.sequential();
-model.add(tf.layers.dense({inputShape: [784], units: 100, activation: 'relu'}));
-model.add(tf.layers.dense({units: 20, activation: 'relu'}));
-model.add(tf.layers.dense({units: 50, activation: 'relu'}));
-model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
+
+model.add(tf.layers.conv2d({
+    filters: 16,
+    kernelSize: 3, // Square Filter of 3 by 3. Could also specify rectangle eg [2, 3].
+    strides: 1,
+    padding: 'same',
+    activation: 'relu',
+    inputShape: [28, 28, 1]
+}));
+
+model.add(tf.layers.maxPooling2d({poolSize: 2, strides: 2}));
+
+model.add(tf.layers.conv2d({
+    filters: 32,
+    kernelSize: 3,
+    strides: 1,
+    padding: 'same',
+    activation: 'relu'
+}));
+
+model.add(tf.layers.maxPooling2d({poolSize: 2, strides: 2}));
+
+model.add(tf.layers.flatten());
+
+model.add(tf.layers.dense({units: 128, activation: 'relu'}));
+
+model.add(tf.layers.dense({units: 10, activation: 'softmax'}))
 
 model.summary();
 
@@ -50,14 +78,14 @@ evaluate();
 
 function normalize(tensor, min, max) {
     const result = tf.tidy(function() {
-        const MIN_VALUES = min || tf.min(tensor, 0);
-        const MAX_VALUES = max || tf.max(tensor, 0);
+        const MIN_VALUES = tf.scalar(min);
+        const MAX_VALUES = tf.scalar(max);
 
         const TENSOR_SUBTRACT_MIN_VALUE = tf.sub(tensor, MIN_VALUES);
         const RANGE_SIZE = tf.sub(MAX_VALUES, MIN_VALUES);
         const NORMALIZED_VALUES = tf.div(TENSOR_SUBTRACT_MIN_VALUE, RANGE_SIZE);
 
-        return {NORMALIZED_VALUES, MIN_VALUES, MAX_VALUES};
+        return NORMALIZED_VALUES;
     });
     return result;
 }
@@ -71,24 +99,24 @@ async function train() {
         metrics: ['accuracy']
     });
 
-    let results = await model.fit(FEATURE_RESULTS.NORMALIZED_VALUES, OUTPUTS_TENSOR, {
-        shuffle: true,        // Ensure data is shuffled again before using each epoch.
-        validationSplit: 0.1,
-        batchSize: 128,       // Update weights after every 512 examples.
-        epochs: 100,           // Go over the data 50 times!
+    const RESHAPED_INPUTS = INPUTS_TENSOR.reshape([INPUTS.length, 28, 28, 1]);
+
+    let results = await model.fit(RESHAPED_INPUTS, OUTPUTS_TENSOR, {
+        shuffle: true,
+        validationSplit: 0.15,
+        batchSize: 256,
+        epochs: 30,
         callbacks: {onEpochEnd: logProgress}
     });
 
+    RESHAPED_INPUTS.dispose();
     OUTPUTS_TENSOR.dispose();
-    FEATURE_RESULTS.NORMALIZED_VALUES.dispose();
-
-    console.log("Average error loss: " + Math.sqrt(results.history.loss[results.history.loss.length - 1]));
-
-    // evaluate(); // Once trained we can evaluate the model.
+    INPUTS_TENSOR.dispose();
 }
 
 function logProgress(epoch, logs) {
-    console.log(`Epoch: ${epoch} - loss: ${Math.sqrt(logs.loss)} - accuracy: ${logs.acc}`);
+    // console.log(`Epoch: ${epoch} - loss: ${Math.sqrt(logs.loss)} - accuracy: ${logs.acc}`);
+    console.log(`Epoch: ${epoch} - `, logs);
 }
 
 function evaluate() {
@@ -96,8 +124,8 @@ function evaluate() {
 
     let answer = tf.tidy(function() {
         // let newInput = normalize(tf.tensor1d(INPUTS[OFFSET]));
-        let newInput = normalize(tf.tensor1d(INPUTS[OFFSET]).expandDims(), FEATURE_RESULTS.MIN_VALUES, FEATURE_RESULTS.MAX_VALUES);
-        let output = model.predict(newInput.NORMALIZED_VALUES);
+        let newInput = normalize(tf.tensor1d(INPUTS[OFFSET]), 0, 255);
+        let output = model.predict(newInput.reshape([1, 28, 28, 1]));
         output.print();
         return output.squeeze().argMax();
     });
@@ -124,7 +152,9 @@ function drawImage(digit) {
     CTX.putImageData(imageData, 0, 0);
 
     // Perform a new classification after a certain interval.
-    setTimeout(evaluate, 2000);
+    window.requestAnimationFrame(function() {
+        setTimeout(evaluate, interval);
+    });
 }
 
 function drawImage2(digit, interval) {
